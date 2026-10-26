@@ -8,6 +8,9 @@ struct Args {
     #[arg(long, value_enum, value_delimiter= ',',
             default_values_t = [Column::Pid, Column::Ppid, Column::Name])]
     show: Vec<Column>,
+
+    #[arg(short, long, default_value_t = 12)]
+    column_width: usize,
 }
 
 fn main() {
@@ -15,13 +18,13 @@ fn main() {
     let proc_list = procs::read_proc_fs().unwrap();
 
     for field in &args.show {
-        print!("{:<12}", field.header());
+        print!("{:<width$}", field.header(), width = args.column_width);
     }
     println!();
 
     for p in &proc_list {
         for field in &args.show {
-            print!("{:<12}", field.value(p));
+            print!("{:<width$}", field.value(p), width = args.column_width);
         }
         println!();
     }
