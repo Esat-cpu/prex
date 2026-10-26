@@ -16,7 +16,7 @@ pub struct Process {
 }
 
 impl Process {
-    /// Create a process instance with given PID according to /proc/<pid>/stat
+    /// Create a process instance with given PID according to `/proc/<pid>/stat`
     pub fn new(pid: i32) -> io::Result<Process> {
         let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
         parse_stat(pid, stat.as_str())
@@ -92,4 +92,23 @@ pub fn read_proc_fs() -> io::Result<Vec<Process>> {
     }
 
     Ok(proc_list)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn name_with_parens_and_spaces() {
+        let p = parse_stat(42, "42 (a (b) c) S 7 9 9").unwrap();
+        assert_eq!(p.name(), "a (b) c");
+        assert_eq!(p.state(), "S");
+        assert_eq!(p.ppid(), 7);
+        assert_eq!(p.pgrp(), 9);
+    }
+
+    #[test]
+    fn truncated_line_is_an_error() {
+        assert!(parse_stat(42, "42 (a) S").is_err());
+    }
 }
