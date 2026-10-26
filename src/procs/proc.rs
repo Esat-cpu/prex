@@ -1,3 +1,7 @@
+//! Reads process information from `/proc`.
+//!
+//! Currently only `/proc/<pid>/stat` is parsed.
+
 use std::fs;
 use std::io;
 
@@ -12,42 +16,18 @@ pub struct Process {
 }
 
 impl Process {
+    /// Create a process instance with given PID according to /proc/<pid>/stat
     pub fn new(pid: i32) -> io::Result<Process> {
         let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-
-        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
-            return Err(io::Error::from(io::ErrorKind::InvalidData));
-        };
-
-        let name = stat[(open + 1)..close].to_owned();
-
-        let fields: Vec<&str> = stat[(close + 1)..].split_whitespace().collect();
-        // Field number according to proc_pid_stat(5)
-        let field = |n: usize| fields.get(n - 3).copied();
-
-        let (Some(state), Some(ppid), Some(pgrp)) = (
-            field(3).map(String::from),
-            field(4).and_then(|s| s.parse().ok()),
-            field(5).and_then(|s| s.parse().ok()),
-        ) else {
-            return Err(io::Error::from(io::ErrorKind::InvalidData));
-        };
-
-        Ok(Process {
-            name,
-            state,
-            pid,
-            ppid,
-            pgrp,
-        })
+        parse_stat(pid, stat.as_str())
     }
 
-    pub fn name(&self) -> String {
-        self.name.clone()
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    pub fn state(&self) -> String {
-        self.state.clone()
+    pub fn state(&self) -> &str {
+        &self.state
     }
 
     pub fn pid(&self) -> i32 {
@@ -63,6 +43,39 @@ impl Process {
     }
 }
 
+/// Parse given stat content
+fn parse_stat(pid: i32, stat: &str) -> io::Result<Process> {
+    let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    };
+
+    let name = stat[(open + 1)..close].to_owned();
+
+    let fields: Vec<&str> = stat[(close + 1)..].split_whitespace().collect();
+
+    // Field number according to proc_pid_stat(5)
+    let field = |n: usize| fields.get(n - 3).copied();
+
+    let (Some(state), Some(ppid), Some(pgrp)) = (
+        field(3).map(String::from),
+        field(4).and_then(|s| s.parse().ok()),
+        field(5).and_then(|s| s.parse().ok()),
+    ) else {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    };
+
+    Ok(Process {
+        name,
+        state,
+        pid,
+        ppid,
+        pgrp,
+    })
+}
+
+/// Reads every process currently listed in `/proc`.
+///
+/// Processes that exit mid-read or can't be parsed are skipped.
 pub fn read_proc_fs() -> io::Result<Vec<Process>> {
     let mut proc_list: Vec<Process> = Vec::new();
 
@@ -70,13 +83,11 @@ pub fn read_proc_fs() -> io::Result<Vec<Process>> {
         let entry = entry?.file_name();
         let entry = entry.to_str();
 
-        match entry {
-            Some(e) if let Ok(pid) = e.parse::<i32>() => {
-                if let Ok(p) = Process::new(pid) {
-                    proc_list.push(p);
-                }
-            }
-            _ => (),
+        if let Some(e) = entry
+            && let Ok(pid) = e.parse::<i32>()
+            && let Ok(p) = Process::new(pid)
+        {
+            proc_list.push(p);
         }
     }
 
