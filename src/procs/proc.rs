@@ -2,28 +2,64 @@ use std::fs;
 use std::io;
 
 pub struct Process {
-    pub name: String,
+    name: String,
 
-    pub pid: i32,
-    pub ppid: i32,
+    state: String,
+
+    pid: i32,
+    ppid: i32,
+    pgrp: i32,
 }
 
 impl Process {
     pub fn new(pid: i32) -> io::Result<Process> {
-        let status = fs::read_to_string(format!("/proc/{pid}/status"))?;
+        let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
 
-        let mut name = "?".to_owned();
-        let mut ppid = -1;
+        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        };
 
-        for line in status.lines() {
-            if let Some(s) = line.strip_prefix("Name:") {
-                name = s.trim().to_owned();
-            } else if let Some(s) = line.strip_prefix("PPid:") {
-                ppid = s.trim().parse().unwrap_or(-1);
-            }
-        }
+        let name = stat[(open + 1)..close].to_owned();
 
-        Ok(Process { name, pid, ppid })
+        let fields: Vec<&str> = stat[(close + 1)..].split_whitespace().collect();
+        // Field number according to proc_pid_stat(5)
+        let field = |n: usize| fields.get(n - 3).copied();
+
+        let (Some(state), Some(ppid), Some(pgrp)) = (
+            field(3).map(String::from),
+            field(4).and_then(|s| s.parse().ok()),
+            field(5).and_then(|s| s.parse().ok()),
+        ) else {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        };
+
+        Ok(Process {
+            name,
+            state,
+            pid,
+            ppid,
+            pgrp,
+        })
+    }
+
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn state(&self) -> String {
+        self.state.clone()
+    }
+
+    pub fn pid(&self) -> i32 {
+        self.pid
+    }
+
+    pub fn ppid(&self) -> i32 {
+        self.ppid
+    }
+
+    pub fn pgrp(&self) -> i32 {
+        self.pgrp
     }
 }
 
