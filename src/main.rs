@@ -6,7 +6,7 @@ fn main() {
     let proc_list = read_proc_fs().unwrap();
 
     if args.tree {
-        print_tree(&proc_list);
+        print_tree(args, &proc_list);
     } else {
         print_columns(args, proc_list);
     }

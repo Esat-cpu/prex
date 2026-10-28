@@ -45,11 +45,15 @@ pub struct Args {
     pub show: Vec<Column>,
 
     #[arg(short, long, default_value_t = 12)]
-    pub column_width: usize,
+    column_width: usize,
 
     /// Print process tree
     #[arg(short, long)]
     pub tree: bool,
+
+    /// Show subtree of PID; requires -t/--tree
+    #[arg(short, long, default_value_t = 0, requires = "tree")]
+    subtree: i32,
 }
 
 pub fn print_columns(args: Args, proc_list: Vec<Process>) {
@@ -96,7 +100,7 @@ fn print_tree_impl(
     }
 }
 
-pub fn print_tree(proc_list: &[Process]) {
+pub fn print_tree(args: Args, proc_list: &[Process]) {
     // Maps a parent PID to the indices (in `proc_list`) of its children
     let mut hm: HashMap<i32, Vec<usize>> = HashMap::new();
 
@@ -104,5 +108,5 @@ pub fn print_tree(proc_list: &[Process]) {
         hm.entry(p.ppid()).or_default().push(i);
     }
 
-    print_tree_impl("", 0, &hm, proc_list);
+    print_tree_impl("", args.subtree, &hm, proc_list);
 }
